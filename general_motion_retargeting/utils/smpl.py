@@ -12,21 +12,51 @@ def load_smpl_file(smpl_file):
     return smpl_data
 
 def load_smplx_file(smplx_file, smplx_body_model_path):
-    smplx_data = np.load(smplx_file, allow_pickle=True)
+    raw_smplx_data = np.load(smplx_file, allow_pickle=True)
+
+    smplx_data = {
+        "pose_body": raw_smplx_data["pose_body"] if "pose_body" in raw_smplx_data else raw_smplx_data["body_pose"],
+        "root_orient": raw_smplx_data["root_orient"] if "root_orient" in raw_smplx_data else raw_smplx_data["global_orient"],
+        "trans": raw_smplx_data["trans"] if "trans" in raw_smplx_data else raw_smplx_data["transl"],
+        "betas": raw_smplx_data["betas"],
+        "gender": raw_smplx_data["gender"],
+        "mocap_frame_rate": raw_smplx_data["mocap_frame_rate"] if "mocap_frame_rate" in raw_smplx_data else raw_smplx_data["fps"],
+    }
+
+    gender = smplx_data["gender"]
+    if isinstance(gender, np.ndarray):
+        gender = gender.item()
+    if isinstance(gender, bytes):
+        gender = gender.decode("utf-8")
+    gender = str(gender)
+
+    betas = np.asarray(smplx_data["betas"])
+    if betas.ndim == 0:
+        betas = betas.reshape(1)
+    elif betas.ndim >= 2:
+        betas = betas.reshape(-1, betas.shape[-1])[0]
+
     body_model = smplx.create(
         smplx_body_model_path,
         "smplx",
-        gender=str(smplx_data["gender"]),
+        gender=gender,
         use_pca=False,
     )
     # print(smplx_data["pose_body"].shape)
     # print(smplx_data["betas"].shape)
     # print(smplx_data["root_orient"].shape)
     # print(smplx_data["trans"].shape)
-    
+
+    target_num_betas = int(getattr(body_model, "num_betas", betas.shape[-1]))
+    if betas.shape[-1] < target_num_betas:
+        betas = np.concatenate([betas, np.zeros(target_num_betas - betas.shape[-1], dtype=betas.dtype)])
+    elif betas.shape[-1] > target_num_betas:
+        betas = betas[:target_num_betas]
+    smplx_data["betas"] = betas
+
     num_frames = smplx_data["pose_body"].shape[0]
     smplx_output = body_model(
-        betas=torch.tensor(smplx_data["betas"]).float().view(1, -1), # (16,)
+        betas=torch.tensor(betas).float().view(1, -1),
         global_orient=torch.tensor(smplx_data["root_orient"]).float(), # (N, 3)
         body_pose=torch.tensor(smplx_data["pose_body"]).float(), # (N, 63)
         transl=torch.tensor(smplx_data["trans"]).float(), # (N, 3)
@@ -38,12 +68,12 @@ def load_smplx_file(smplx_file, smplx_body_model_path):
         # expression=torch.zeros(num_frames, 10).float(),
         return_full_pose=True,
     )
-    
+
     if len(smplx_data["betas"].shape)==1:
         human_height = 1.66 + 0.1 * smplx_data["betas"][0]
     else:
         human_height = 1.66 + 0.1 * smplx_data["betas"][0, 0]
-    
+
     return smplx_data, body_model, smplx_output, human_height
 
 
@@ -54,16 +84,16 @@ def load_gvhmr_pred_file(gvhmr_pred_file, smplx_body_model_path):
     # print(smpl_params_global['betas'].shape)
     # print(smpl_params_global['global_orient'].shape)
     # print(smpl_params_global['transl'].shape)
-    
+
     betas = np.pad(smpl_params_global['betas'][0], (0,6))
-    
+
     # correct rotations
     # rotation_matrix = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
     # rotation_quat = R.from_matrix(rotation_matrix).as_quat(scalar_first=True)
-    
+
     # smpl_params_global['body_pose'] = smpl_params_global['body_pose'] @ rotation_matrix
     # smpl_params_global['global_orient'] = smpl_params_global['global_orient'] @ rotation_quat
-    
+
     smplx_data = {
         'pose_body': smpl_params_global['body_pose'].numpy(),
         'betas': betas,
@@ -78,7 +108,7 @@ def load_gvhmr_pred_file(gvhmr_pred_file, smplx_body_model_path):
         gender="neutral",
         use_pca=False,
     )
-    
+
     num_frames = smpl_params_global['body_pose'].shape[0]
     smplx_output = body_model(
         betas=torch.tensor(smplx_data["betas"]).float().view(1, -1), # (16,)
@@ -93,12 +123,12 @@ def load_gvhmr_pred_file(gvhmr_pred_file, smplx_body_model_path):
         # expression=torch.zeros(num_frames, 10).float(),
         return_full_pose=True,
     )
-    
+
     if len(smplx_data['betas'].shape)==1:
         human_height = 1.66 + 0.1 * smplx_data['betas'][0]
     else:
         human_height = 1.66 + 0.1 * smplx_data['betas'][0, 0]
-    
+
     return smplx_data, body_model, smplx_output, human_height
 
 
@@ -129,7 +159,7 @@ def get_smplx_data(smplx_data, body_model, smplx_output, curr_frame):
         joint_orientations.append(rot)
         result[joint_name] = (joints[i], rot.as_quat(scalar_first=True))
 
-  
+
     return result
 
 
@@ -138,33 +168,33 @@ def slerp(rot1, rot2, t):
     # Convert to quaternions
     q1 = rot1.as_quat()
     q2 = rot2.as_quat()
-    
+
     # Normalize quaternions
     q1 = q1 / np.linalg.norm(q1)
     q2 = q2 / np.linalg.norm(q2)
-    
+
     # Compute dot product
     dot = np.sum(q1 * q2)
-    
+
     # If the dot product is negative, slerp won't take the shorter path
     if dot < 0.0:
         q2 = -q2
         dot = -dot
-    
+
     # If the inputs are too close, linearly interpolate
     if dot > 0.9995:
         return R.from_quat(q1 + t * (q2 - q1))
-    
+
     # Perform SLERP
     theta_0 = np.arccos(dot)
     theta = theta_0 * t
     sin_theta = np.sin(theta)
     sin_theta_0 = np.sin(theta_0)
-    
+
     s0 = np.cos(theta) - dot * sin_theta / sin_theta_0
     s1 = sin_theta / sin_theta_0
     q = s0 * q1 + s1 * q2
-    
+
     return R.from_quat(q)
 
 def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30):
@@ -184,15 +214,15 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
     joints = smplx_output.joints.detach().numpy().squeeze()
     joint_names = JOINT_NAMES[: len(body_model.parents)]
     parents = body_model.parents
-    
+
     if tgt_fps < src_fps:
         # perform fps alignment with proper interpolation
         new_num_frames = num_frames // frame_skip
-        
+
         # Create time points for interpolation
         original_time = np.arange(num_frames)
         target_time = np.linspace(0, num_frames-1, new_num_frames)
-        
+
         # Interpolate global orientation using SLERP
         global_orient_interp = []
         for i in range(len(target_time)):
@@ -200,13 +230,13 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
             idx1 = int(np.floor(t))
             idx2 = min(idx1 + 1, num_frames - 1)
             alpha = t - idx1
-            
+
             rot1 = R.from_rotvec(global_orient[idx1])
             rot2 = R.from_rotvec(global_orient[idx2])
             interp_rot = slerp(rot1, rot2, alpha)
             global_orient_interp.append(interp_rot.as_rotvec())
         global_orient = np.stack(global_orient_interp, axis=0)
-        
+
         # Interpolate full body pose using SLERP
         full_body_pose_interp = []
         for i in range(full_body_pose.shape[1]):  # For each joint
@@ -216,14 +246,14 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
                 idx1 = int(np.floor(t))
                 idx2 = min(idx1 + 1, num_frames - 1)
                 alpha = t - idx1
-                
+
                 rot1 = R.from_rotvec(full_body_pose[idx1, i])
                 rot2 = R.from_rotvec(full_body_pose[idx2, i])
                 interp_rot = slerp(rot1, rot2, alpha)
                 joint_rots.append(interp_rot.as_rotvec())
             full_body_pose_interp.append(np.stack(joint_rots, axis=0))
         full_body_pose = np.stack(full_body_pose_interp, axis=1)
-        
+
         # Interpolate joint positions using linear interpolation
         joints_interp = []
         for i in range(joints.shape[1]):  # For each joint
@@ -231,11 +261,11 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
                 interp_func = interp1d(original_time, joints[:, i, j], kind='linear')
                 joints_interp.append(interp_func(target_time))
         joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
-        
+
         aligned_fps = len(global_orient) / num_frames * src_fps
     else:
         aligned_fps = tgt_fps
-        
+
     smplx_data_frames = []
     for curr_frame in range(len(global_orient)):
         result = {}
@@ -277,15 +307,15 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
     joints = smplx_output.joints.detach().numpy().squeeze()
     joint_names = JOINT_NAMES[: len(body_model.parents)]
     parents = body_model.parents
-    
+
     if tgt_fps < src_fps:
         # perform fps alignment with proper interpolation
         new_num_frames = num_frames // frame_skip
-        
+
         # Create time points for interpolation
         original_time = np.arange(num_frames)
         target_time = np.linspace(0, num_frames-1, new_num_frames)
-        
+
         # Interpolate global orientation using SLERP
         global_orient_interp = []
         for i in range(len(target_time)):
@@ -293,13 +323,13 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
             idx1 = int(np.floor(t))
             idx2 = min(idx1 + 1, num_frames - 1)
             alpha = t - idx1
-            
+
             rot1 = R.from_rotvec(global_orient[idx1])
             rot2 = R.from_rotvec(global_orient[idx2])
             interp_rot = slerp(rot1, rot2, alpha)
             global_orient_interp.append(interp_rot.as_rotvec())
         global_orient = np.stack(global_orient_interp, axis=0)
-        
+
         # Interpolate full body pose using SLERP
         full_body_pose_interp = []
         for i in range(full_body_pose.shape[1]):  # For each joint
@@ -309,14 +339,14 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
                 idx1 = int(np.floor(t))
                 idx2 = min(idx1 + 1, num_frames - 1)
                 alpha = t - idx1
-                
+
                 rot1 = R.from_rotvec(full_body_pose[idx1, i])
                 rot2 = R.from_rotvec(full_body_pose[idx2, i])
                 interp_rot = slerp(rot1, rot2, alpha)
                 joint_rots.append(interp_rot.as_rotvec())
             full_body_pose_interp.append(np.stack(joint_rots, axis=0))
         full_body_pose = np.stack(full_body_pose_interp, axis=1)
-        
+
         # Interpolate joint positions using linear interpolation
         joints_interp = []
         for i in range(joints.shape[1]):  # For each joint
@@ -324,11 +354,11 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
                 interp_func = interp1d(original_time, joints[:, i, j], kind='linear')
                 joints_interp.append(interp_func(target_time))
         joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
-        
+
         aligned_fps = len(global_orient) / num_frames * src_fps
     else:
         aligned_fps = tgt_fps
-        
+
     smplx_data_frames = []
     for curr_frame in range(len(global_orient)):
         result = {}
@@ -348,7 +378,7 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
 
 
         smplx_data_frames.append(result)
-        
+
     # add correct rotations
     rotation_matrix = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
     rotation_quat = R.from_matrix(rotation_matrix).as_quat(scalar_first=True)
@@ -357,6 +387,6 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
             orientation = utils.quat_mul(rotation_quat, result[joint_name][1])
             position = result[joint_name][0] @ rotation_matrix.T
             result[joint_name] = (position, orientation)
-            
+
 
     return smplx_data_frames, aligned_fps
