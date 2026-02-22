@@ -7,11 +7,55 @@ from scipy.interpolate import interp1d
 
 import general_motion_retargeting.utils.lafan_vendor.utils as utils
 
+
+
+def _coord_candidates():
+    def rot(axis, deg):
+        return R.from_euler(axis, deg, degrees=True).as_matrix()
+
+    return {
+        "identity": np.eye(3),
+        "x+90": rot("x", 90),
+        "x-90": rot("x", -90),
+        "y+90": rot("y", 90),
+        "y-90": rot("y", -90),
+        "z+90": rot("z", 90),
+        "z-90": rot("z", -90),
+        "x180": rot("x", 180),
+        "repo_default": np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]]),
+    }
+
+
+def _select_coord_correction(root_orient, trans):
+    world_up = np.array([0.0, 0.0, 1.0])
+
+    best_name = "identity"
+    best_matrix = np.eye(3)
+    best_score = -np.inf
+
+    for name, matrix in _coord_candidates().items():
+        corr_rot = R.from_matrix(matrix)
+        corrected = corr_rot * R.from_rotvec(root_orient)
+        body_up = corrected.apply(world_up)
+        up_alignment = float(np.mean(body_up[:, 2]))
+
+        corrected_trans = trans @ matrix.T
+        z_range = float(np.percentile(corrected_trans[:, 2], 95) - np.percentile(corrected_trans[:, 2], 5))
+
+        score = up_alignment - 0.2 * z_range
+        if score > best_score:
+            best_score = score
+            best_name = name
+            best_matrix = matrix
+
+    return best_name, best_matrix
+
 def load_smpl_file(smpl_file):
     smpl_data = np.load(smpl_file, allow_pickle=True)
     return smpl_data
 
-def load_smplx_file(smplx_file, smplx_body_model_path):
+
+def load_smplx_file(smplx_file, smplx_body_model_path, coord_correction="auto"):
     raw_smplx_data = np.load(smplx_file, allow_pickle=True)
 
     smplx_data = {
@@ -21,7 +65,17 @@ def load_smplx_file(smplx_file, smplx_body_model_path):
         "betas": raw_smplx_data["betas"],
         "gender": raw_smplx_data["gender"],
         "mocap_frame_rate": raw_smplx_data["mocap_frame_rate"] if "mocap_frame_rate" in raw_smplx_data else raw_smplx_data["fps"],
+        "apply_coord_correction": "global_orient" in raw_smplx_data and "root_orient" not in raw_smplx_data,
     }
+
+    if smplx_data["apply_coord_correction"]:
+        if coord_correction == "auto":
+            _, coord_matrix = _select_coord_correction(smplx_data["root_orient"], smplx_data["trans"])
+            smplx_data["coord_correction_matrix"] = coord_matrix
+        elif coord_correction == "none":
+            smplx_data["coord_correction_matrix"] = np.eye(3)
+        else:
+            smplx_data["coord_correction_matrix"] = _coord_candidates()[coord_correction]
 
     gender = smplx_data["gender"]
     if isinstance(gender, np.ndarray):
@@ -285,6 +339,26 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
 
 
         smplx_data_frames.append(result)
+
+    if smplx_data.get("apply_coord_correction", False):
+        rotation_matrix = smplx_data.get("coord_correction_matrix", np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]]))
+        rotation_quat = R.from_matrix(rotation_matrix).as_quat(scalar_first=True)
+        min_height = np.inf
+
+        for result in smplx_data_frames:
+            for joint_name in result.keys():
+                orientation = utils.quat_mul(rotation_quat, result[joint_name][1])
+                position = result[joint_name][0] @ rotation_matrix.T
+                min_height = min(min_height, position[2])
+                result[joint_name] = (position, orientation)
+
+        # Normalize to floor level for alternate coordinate conventions.
+        if np.isfinite(min_height):
+            floor_offset = np.array([0.0, 0.0, -min_height])
+            for result in smplx_data_frames:
+                for joint_name in result.keys():
+                    position, orientation = result[joint_name]
+                    result[joint_name] = (position + floor_offset, orientation)
 
     return smplx_data_frames, aligned_fps
 

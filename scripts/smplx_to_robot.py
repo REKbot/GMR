@@ -58,6 +58,13 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--coord_correction",
+        choices=["auto", "none", "identity", "x+90", "x-90", "y+90", "y-90", "z+90", "z-90", "x180", "repo_default"],
+        default="auto",
+        help="Coordinate correction for alternate SMPL-X axis conventions.",
+    )
+
+    parser.add_argument(
         "--rate_limit",
         default=False,
         action="store_true",
@@ -72,7 +79,7 @@ if __name__ == "__main__":
     
     # Load SMPLX trajectory
     smplx_data, body_model, smplx_output, actual_human_height = load_smplx_file(
-        args.smplx_file, SMPLX_FOLDER
+        args.smplx_file, SMPLX_FOLDER, coord_correction=args.coord_correction
     )
     
     # align fps
