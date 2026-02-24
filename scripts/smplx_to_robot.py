@@ -44,6 +44,13 @@ if __name__ == "__main__":
     )
     
     parser.add_argument(
+        "--save_format",
+        choices=["auto", "pkl", "npz"],
+        default="auto",
+        help="Format for --save_path. auto infers from extension (defaults to pkl).",
+    )
+
+    parser.add_argument(
         "--loop",
         default=False,
         action="store_true",
@@ -171,9 +178,20 @@ if __name__ == "__main__":
             "local_body_pos": local_body_pos,
             "link_body_list": body_names,
         }
-        with open(args.save_path, "wb") as f:
-            pickle.dump(motion_data, f)
-        print(f"Saved to {args.save_path}")
+
+        save_format = args.save_format
+        if save_format == "auto":
+            if args.save_path.lower().endswith(".npz"):
+                save_format = "npz"
+            else:
+                save_format = "pkl"
+
+        if save_format == "npz":
+            np.savez(args.save_path, **motion_data)
+        else:
+            with open(args.save_path, "wb") as f:
+                pickle.dump(motion_data, f)
+        print(f"Saved to {args.save_path} ({save_format})")
             
       
     
