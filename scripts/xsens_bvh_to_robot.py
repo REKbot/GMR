@@ -58,6 +58,13 @@ if __name__ == "__main__":
         help="Path to save the robot motion.",
     )
 
+    parser.add_argument(
+        "--save_format",
+        choices=["auto", "pkl", "npz"],
+        default="auto",
+        help="Output format for saved motion. 'auto' infers from --save_path suffix.",
+    )
+
     # parser.add_argument(
     #     "--axis_order",
     #     default="zxy",
@@ -183,10 +190,9 @@ if __name__ == "__main__":
             qpos_list.append(qpos)
 
     if args.save_path is not None:
-        import pickle
-
         root_pos = np.array([qpos[:3] for qpos in qpos_list])
-        root_rot = np.array([qpos[3:7] for qpos in qpos_list])
+        # save from wxyz to xyzw for downstream compatibility
+        root_rot = np.array([qpos[3:7][[1, 2, 3, 0]] for qpos in qpos_list])
         dof_pos = np.array([qpos[7:] for qpos in qpos_list])
         local_body_pos = None
         body_names = None
@@ -199,8 +205,19 @@ if __name__ == "__main__":
             "local_body_pos": local_body_pos,
             "link_body_list": body_names,
         }
-        with open(args.save_path, "wb") as f:
-            pickle.dump(motion_data, f)
+
+        save_format = args.save_format
+        if save_format == "auto":
+            suffix = pathlib.Path(args.save_path).suffix.lower()
+            save_format = "npz" if suffix == ".npz" else "pkl"
+
+        if save_format == "npz":
+            np.savez(args.save_path, **motion_data)
+        else:
+            import pickle
+
+            with open(args.save_path, "wb") as f:
+                pickle.dump(motion_data, f)
         print(f"Saved to {args.save_path}")
 
     # Close progress bar
