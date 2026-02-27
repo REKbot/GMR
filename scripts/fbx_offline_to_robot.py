@@ -100,6 +100,31 @@ def load_optitrack_fbx_motion_file(motion_file, root_joint="Hips", fps=None):
         f"Unsupported motion file format '{suffix}'. Use a .pkl exported by PoseLib or a raw .fbx file."
     )
 
+
+def _trim_frames_by_timestamp(data_frames, motion_fps, start_sec=None, end_sec=None):
+    if start_sec is None and end_sec is None:
+        return data_frames
+
+    total_frames = len(data_frames)
+    if total_frames == 0:
+        return data_frames
+
+    if motion_fps is None or motion_fps <= 0:
+        raise ValueError(f"Invalid motion FPS for trimming: {motion_fps}")
+
+    start_frame = 0 if start_sec is None else int(round(start_sec * motion_fps))
+    end_frame = total_frames if end_sec is None else int(round(end_sec * motion_fps))
+
+    start_frame = max(0, min(start_frame, total_frames))
+    end_frame = max(start_frame, min(end_frame, total_frames))
+
+    print(
+        f"Trimming input frames: {start_frame}–{end_frame} "
+        f"({start_frame / motion_fps:.3f}s – {end_frame / motion_fps:.3f}s) "
+        f"out of {total_frames} frames ({total_frames / motion_fps:.3f}s)"
+    )
+    return data_frames[start_frame:end_frame]
+
 def offset_to_ground(retargeter: GMR, motion_data):
     offset = np.inf
     for human_data in motion_data:
@@ -137,6 +162,20 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="Optional override FPS when --motion_file is a raw .fbx. If omitted, use FBX metadata.",
+    )
+
+    parser.add_argument(
+        "--start",
+        type=float,
+        default=None,
+        help="Optional start timestamp in seconds to trim input motion before retargeting.",
+    )
+
+    parser.add_argument(
+        "--end",
+        type=float,
+        default=None,
+        help="Optional end timestamp in seconds to trim input motion before retargeting.",
     )
     
     parser.add_argument(
@@ -188,9 +227,18 @@ if __name__ == "__main__":
     data_frames, detected_motion_fps = load_optitrack_fbx_motion_file(
         args.motion_file, root_joint=args.root_joint, fps=args.fps
     )
+    motion_fps = detected_motion_fps if detected_motion_fps is not None else (args.fps or 120)
+    data_frames = _trim_frames_by_timestamp(
+        data_frames,
+        motion_fps=motion_fps,
+        start_sec=args.start,
+        end_sec=args.end,
+    )
     print(f"Loaded {len(data_frames)} frames")
-    
-    
+
+    if len(data_frames) == 0:
+        raise ValueError("No frames remain after trimming. Please adjust --start/--end.")
+
     # Initialize the retargeting system with fbx configuration
     retargeter = GMR(
         src_human="fbx_offline",  # Use the new fbx configuration
@@ -201,8 +249,6 @@ if __name__ == "__main__":
     height_offset = offset_to_ground(retargeter, data_frames)
     retargeter.set_ground_offset(height_offset)
 
-    motion_fps = detected_motion_fps if detected_motion_fps is not None else (args.fps or 120)
-    
     robot_motion_viewer = RobotMotionViewer(robot_type=args.robot,
                                             motion_fps=motion_fps,
                                             transparent_robot=1,

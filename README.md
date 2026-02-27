@@ -445,11 +445,16 @@ python poselib/fbx_importer.py --input <path_to_fbx_file.fbx> --output <path_to_
 conda activate gmr
 # single motion
 python scripts/fbx_offline_to_robot.py --motion_file <path_to_saved_motion_data.pkl> --robot <path_to_robot_data> --save_path <path_to_save_robot_data.pkl> --rate_limit
+# trim to a time window before retargeting
+python scripts/fbx_offline_to_robot.py --motion_file <path_to_saved_motion_data.pkl> --start 4.0 --end 10.0 --robot <path_to_robot_data> --save_path <path_to_save_robot_data.pkl> --rate_limit
 # or pass a raw .fbx directly (requires fbx_sdk)
 python scripts/fbx_offline_to_robot.py --motion_file <path_to_motion.fbx> --root_joint Hips --robot <path_to_robot_data> --save_path <path_to_save_robot_data.pkl> --rate_limit
 ```
 
 For raw `.fbx` input, the script uses FPS from FBX metadata by default; pass `--fps <value>` only if you want to force an override. For `.pkl` input, playback/export uses `--fps` (default `120`).
+You can trim input motion by timestamps for either `.pkl` or `.fbx` using `--start <seconds>` and `--end <seconds>`.
+
+If you already have a retargeted `.npz`, use `python scripts/trim_npz.py input.npz output.npz --start 4.0 --end 10.0` to slice all time-series arrays consistently.
 
 If you see errors like `No module named 'fbx'`, `No module named 'FbxCommon'`, or `NameError: FbxCommon is not defined`, your Autodesk FBX Python SDK setup is incomplete. Install/fix the FBX SDK Python bindings **and** ensure `FbxCommon.py` (usually from the FBX SDK Python examples) is on `PYTHONPATH`, or convert FBX to `.pkl` first with `third_party/poselib/fbx_importer.py` and retarget that `.pkl`.
 If you see `TypeError` from `GetFrameCount(...)`, you likely have an FBX SDK Python API/version mismatch; update the SDK bindings or use the `.pkl` conversion fallback.
