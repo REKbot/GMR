@@ -459,6 +459,9 @@ If `--fps 120` still appears ignored, check for a conflicting pip `poselib` inst
 
 By default you should see the visualization of the retargeted robot motion in a mujoco window. 
 
+- Output can be saved as `.pkl` (default) or `.npz` (if `--save_path` ends with `.npz`) with `fps`, `root_pos`, `root_rot` (xyzw), and `dof_pos` arrays.
+- If `--save_path` is omitted, output defaults to `./<input_file_stem>.pkl`.
+
 - `--rate_limit` is used to limit the rate of the retargeted robot motion to keep the same as the human motion. If you want it as fast as possible, remove `--rate_limit`.
 
 #### Online Streaming

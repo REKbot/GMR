@@ -166,18 +166,21 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_path",
         default=None,
-        help="Path to save the robot motion.",
+        help="Path to save the robot motion (.pkl or .npz).",
     )
     
     
     args = parser.parse_args()
-    
 
-    if args.save_path is not None:
-        save_dir = os.path.dirname(args.save_path)
-        if save_dir:  # Only create directory if it's not empty
-            os.makedirs(save_dir, exist_ok=True)
-        qpos_list = []
+    if args.save_path is None:
+        input_stem = pathlib.Path(args.motion_file).stem
+        args.save_path = f"{input_stem}.pkl"
+        print(f"No --save_path provided. Saving output to {args.save_path}")
+
+    save_dir = os.path.dirname(args.save_path)
+    if save_dir:  # Only create directory if it's not empty
+        os.makedirs(save_dir, exist_ok=True)
+    qpos_list = []
 
     
     # Load OptiTrack FMB motion trajectory
@@ -255,29 +258,38 @@ if __name__ == "__main__":
 
         i += 1
 
-        if args.save_path is not None:
-            qpos_list.append(qpos)
+        qpos_list.append(qpos)
 
-    if args.save_path is not None:
-        import pickle
-        root_pos = np.array([qpos[:3] for qpos in qpos_list])
-        # save from wxyz to xyzw
-        root_rot = np.array([qpos[3:7][[1,2,3,0]] for qpos in qpos_list])
-        dof_pos = np.array([qpos[7:] for qpos in qpos_list])
-        local_body_pos = None
-        body_names = None
-        
-        motion_data = {
-            "fps": motion_fps,
-            "root_pos": root_pos,
-            "root_rot": root_rot,
-            "dof_pos": dof_pos,
-            "local_body_pos": local_body_pos,
-            "link_body_list": body_names,
-        }
+    import pickle
+    root_pos = np.array([qpos[:3] for qpos in qpos_list])
+    # save from wxyz to xyzw
+    root_rot = np.array([qpos[3:7][[1,2,3,0]] for qpos in qpos_list])
+    dof_pos = np.array([qpos[7:] for qpos in qpos_list])
+    local_body_pos = None
+    body_names = None
+
+    motion_data = {
+        "fps": motion_fps,
+        "root_pos": root_pos,
+        "root_rot": root_rot,
+        "dof_pos": dof_pos,
+        "local_body_pos": local_body_pos,
+        "link_body_list": body_names,
+    }
+
+    save_suffix = pathlib.Path(args.save_path).suffix.lower()
+    if save_suffix == ".npz":
+        np.savez(
+            args.save_path,
+            fps=np.array([motion_fps], dtype=np.float32),
+            root_pos=root_pos,
+            root_rot=root_rot,
+            dof_pos=dof_pos,
+        )
+    else:
         with open(args.save_path, "wb") as f:
             pickle.dump(motion_data, f)
-        print(f"Saved to {args.save_path}")
+    print(f"Saved to {args.save_path}")
 
     # Close progress bar
     pbar.close()
