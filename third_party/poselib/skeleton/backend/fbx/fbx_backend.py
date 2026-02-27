@@ -8,10 +8,13 @@ import sys
 
 import numpy as np
 
+FBX_IMPORT_ERROR = None
+
 try:
     import fbx
     import FbxCommon
 except ImportError as e:
+    FBX_IMPORT_ERROR = e
     print("Error: FBX library failed to load - importing FBX data will not succeed. Message: {}".format(e))
     print("FBX tools must be installed from https://help.autodesk.com/view/FBX/2020/ENU/?guid=FBX_Developer_Help_scripting_with_python_fbx_installing_python_fbx_html")
 
@@ -29,6 +32,12 @@ def fbx_to_npy(file_name_in, root_joint_name, fps):
     :param file_name_in: str, file path in. Should be .fbx file
     :return: nothing, it just writes a file.
     """
+
+    if FBX_IMPORT_ERROR is not None:
+        raise ImportError(
+            "Autodesk FBX Python SDK import failed. Ensure both `fbx` and `FbxCommon` are "
+            "importable in this environment. Original error: {}".format(FBX_IMPORT_ERROR)
+        ) from FBX_IMPORT_ERROR
 
     # Create the fbx scene object and load the .fbx file
     fbx_sdk_manager, fbx_scene = FbxCommon.InitializeSdkObjects()
@@ -82,12 +91,12 @@ def fbx_to_npy(file_name_in, root_joint_name, fps):
     anim_range, frame_count, frame_rate = _get_frame_count(fbx_scene)
 
     local_transforms = []
-    #for frame in range(frame_count):
+    # Use the FPS reported by FBX time mode, not frame_count/time_range, which can be
+    # inconsistent across SDK bindings/time modes.
     time_sec = anim_range.GetStart().GetSecondDouble()
-    time_range_sec = anim_range.GetStop().GetSecondDouble() - time_sec
-    fbx_fps = frame_count / time_range_sec
-    if fps != 120:
-        fbx_fps = fps
+    fbx_fps = float(frame_rate)
+    if fps is not None:
+        fbx_fps = float(fps)
     print("FPS: ", fbx_fps)
     while time_sec < anim_range.GetStop().GetSecondDouble():
         fbx_time = fbx.FbxTime()
@@ -120,48 +129,67 @@ def fbx_to_npy(file_name_in, root_joint_name, fps):
 
     return joint_names, parents, local_transforms, fbx_fps
 
-def _get_frame_count(fbx_scene):
-    # Get the animation stacks and layers, in order to pull off animation curves later
+
+
+def _get_preferred_anim_stack(fbx_scene):
     num_anim_stacks = fbx_scene.GetSrcObjectCount(
         FbxCommon.FbxCriteria.ObjectType(FbxCommon.FbxAnimStack.ClassId)
     )
-    # if num_anim_stacks != 1:
-    #     raise RuntimeError(
-    #         "More than one animation stack was found. "
-    #         "This script must be modified to handle this case. Exiting"
-    #     )
-    if num_anim_stacks > 1:
-        index = 1
-    else:
-        index = 0
-    anim_stack = fbx_scene.GetSrcObject(
-        FbxCommon.FbxCriteria.ObjectType(FbxCommon.FbxAnimStack.ClassId), index
-    )
+    if num_anim_stacks <= 0:
+        raise RuntimeError("No animation stack found in FBX scene")
+
+    # Prefer the stack with the highest frame rate, then longest duration.
+    # Some files contain multiple stacks with the same duration but different time modes
+    # (e.g. 30 FPS and 120 FPS variants of the same take).
+    best_stack = None
+    best_fps = -1.0
+    best_duration = -1.0
+    for index in range(num_anim_stacks):
+        anim_stack = fbx_scene.GetSrcObject(
+            FbxCommon.FbxCriteria.ObjectType(FbxCommon.FbxAnimStack.ClassId), index
+        )
+        if anim_stack is None:
+            continue
+
+        span = anim_stack.GetLocalTimeSpan()
+        duration = span.GetDuration().GetSecondDouble()
+        global_time_mode = span.GetDuration().GetGlobalTimeMode()
+        frame_rate = span.GetDuration().GetFrameRate(global_time_mode)
+
+        if frame_rate > best_fps or (np.isclose(frame_rate, best_fps) and duration > best_duration):
+            best_fps = frame_rate
+            best_duration = duration
+            best_stack = anim_stack
+
+    if best_stack is None:
+        raise RuntimeError("Failed to resolve a valid animation stack in FBX scene")
+    return best_stack
+
+def _get_frame_count(fbx_scene):
+    # Get the animation stack used for frame timing.
+    anim_stack = _get_preferred_anim_stack(fbx_scene)
 
     anim_range = anim_stack.GetLocalTimeSpan()
     duration = anim_range.GetDuration()
-    fps = duration.GetFrameRate(duration.GetGlobalTimeMode())
-    frame_count = duration.GetFrameCount(True)
+    global_time_mode = duration.GetGlobalTimeMode()
+    fps = duration.GetFrameRate(global_time_mode)
+
+    # FBX Python SDK APIs differ by version:
+    # - some accept GetFrameCount(bool)
+    # - newer bindings require GetFrameCount(FbxTime.EMode)
+    try:
+        frame_count = duration.GetFrameCount(global_time_mode)
+    except TypeError:
+        try:
+            frame_count = duration.GetFrameCount()
+        except TypeError:
+            frame_count = duration.GetFrameCount(True)
 
     return anim_range, frame_count, fps
 
 def _get_animation_curve(joint, fbx_scene):
-    # Get the animation stacks and layers, in order to pull off animation curves later
-    num_anim_stacks = fbx_scene.GetSrcObjectCount(
-        FbxCommon.FbxCriteria.ObjectType(FbxCommon.FbxAnimStack.ClassId)
-    )
-    # if num_anim_stacks != 1:
-    #     raise RuntimeError(
-    #         "More than one animation stack was found. "
-    #         "This script must be modified to handle this case. Exiting"
-    #     )
-    if num_anim_stacks > 1:
-        index = 1
-    else:
-        index = 0
-    anim_stack = fbx_scene.GetSrcObject(
-        FbxCommon.FbxCriteria.ObjectType(FbxCommon.FbxAnimStack.ClassId), index
-    )
+    # Get the animation stack used for frame timing.
+    anim_stack = _get_preferred_anim_stack(fbx_scene)
 
     num_anim_layers = anim_stack.GetSrcObjectCount(
         FbxCommon.FbxCriteria.ObjectType(FbxCommon.FbxAnimLayer.ClassId)

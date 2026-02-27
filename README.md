@@ -431,6 +431,7 @@ Retarget a single motion:
 1. Install `fbx_sdk` by following [these instructions](https://github.com/nv-tlabs/ASE/tree/main/ase/poselib#importing-from-fbx) and [these instructions](https://github.com/nv-tlabs/ASE/issues/61#issuecomment-2670315114). You will probably need a new conda environment for this.
 
 2. Activate the conda environment where you installed `fbx_sdk`.
+   - Use the repository-bundled PoseLib under `third_party/poselib` (no separate `pip install poselib` is needed).
 Use the following command to extract motion data from your `.fbx` file:
 
 ```bash
@@ -444,7 +445,17 @@ python poselib/fbx_importer.py --input <path_to_fbx_file.fbx> --output <path_to_
 conda activate gmr
 # single motion
 python scripts/fbx_offline_to_robot.py --motion_file <path_to_saved_motion_data.pkl> --robot <path_to_robot_data> --save_path <path_to_save_robot_data.pkl> --rate_limit
+# or pass a raw .fbx directly (requires fbx_sdk)
+python scripts/fbx_offline_to_robot.py --motion_file <path_to_motion.fbx> --root_joint Hips --robot <path_to_robot_data> --save_path <path_to_save_robot_data.pkl> --rate_limit
 ```
+
+For raw `.fbx` input, the script uses FPS from FBX metadata by default; pass `--fps <value>` only if you want to force an override. For `.pkl` input, playback/export uses `--fps` (default `120`).
+
+If you see errors like `No module named 'fbx'`, `No module named 'FbxCommon'`, or `NameError: FbxCommon is not defined`, your Autodesk FBX Python SDK setup is incomplete. Install/fix the FBX SDK Python bindings **and** ensure `FbxCommon.py` (usually from the FBX SDK Python examples) is on `PYTHONPATH`, or convert FBX to `.pkl` first with `third_party/poselib/fbx_importer.py` and retarget that `.pkl`.
+If you see `TypeError` from `GetFrameCount(...)`, you likely have an FBX SDK Python API/version mismatch; update the SDK bindings or use the `.pkl` conversion fallback.
+If printed `FPS` appears around 30 for a 120-FPS FBX, update to the latest code: FPS is now taken from FBX time-mode metadata instead of `frame_count / duration`.
+If your FBX has multiple animation stacks, the parser now prefers the highest-FPS stack (then longest duration) for timing/curves (older behavior could pick a 30-FPS stack).
+If `--fps 120` still appears ignored, check for a conflicting pip `poselib` install; this script is intended to use bundled `third_party/poselib`.
 
 By default you should see the visualization of the retargeted robot motion in a mujoco window. 
 
