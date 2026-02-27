@@ -8,11 +8,97 @@ from tqdm import tqdm
 import os
 import numpy as np
 import pickle
+import sys
 
-def load_optitrack_fbx_motion_file(motion_file):
-    with open(motion_file, "rb") as f:
-        motion_data = pickle.load(f)
-    return motion_data
+def _skeleton_motion_to_retarget_frames(motion):
+    import torch
+    from poselib.core.rotation3d import quat_mul_norm, quat_rotate
+
+    global_positions = quat_rotate(
+        torch.tensor([0.70711, 0, 0, 0.70711]),
+        motion.global_translation,
+    ).detach().cpu().numpy() / 100
+    global_quaternions = quat_mul_norm(
+        torch.tensor([0.70711, 0, 0, 0.70711]),
+        motion.global_rotation,
+    ).detach().cpu().numpy()
+
+    joint_names = motion.skeleton_tree.node_names
+    num_frames = global_positions.shape[0]
+    num_joints = len(joint_names)
+    data = []
+
+    for frame in range(num_frames):
+        motion_frame = {}
+        for i in range(num_joints):
+            motion_frame[joint_names[i].split("_")[1]] = [
+                global_positions[frame, i].tolist(),
+                global_quaternions[frame, i, [3, 0, 1, 2]].tolist(),
+            ]
+        data.append(motion_frame)
+
+    return data
+
+
+
+
+def _raise_fbx_dependency_error(motion_file, original_error):
+    raise RuntimeError(
+        "Failed to parse raw .fbx input. The Autodesk FBX Python SDK is required by "
+        "third_party/poselib for FBX loading.\n"
+        "Install FBX SDK Python bindings (module name `fbx`) and retry, or first convert "
+        "the FBX to a PoseLib .pkl via `python third_party/poselib/fbx_importer.py ...` and "
+        "pass that .pkl to --motion_file.\n"
+        f"Input file: {motion_file}\n"
+        f"Original error: {type(original_error).__name__}: {original_error}"
+    ) from original_error
+
+def load_optitrack_fbx_motion_file(motion_file, root_joint="Hips", fps=None):
+    suffix = pathlib.Path(motion_file).suffix.lower()
+    if suffix == ".pkl":
+        with open(motion_file, "rb") as f:
+            return pickle.load(f), None
+
+    if suffix == ".fbx":
+        print(
+            f"Detected .fbx input. Parsing FBX directly with root_joint='{root_joint}', fps={fps}."
+        )
+        repo_root = pathlib.Path(__file__).resolve().parents[1]
+        third_party_path = repo_root / "third_party"
+        if str(third_party_path) not in sys.path:
+            sys.path.insert(0, str(third_party_path))
+
+        # If another PoseLib distribution was imported earlier (e.g. pip `poselib`),
+        # clear it so FBX parsing uses the repository-bundled implementation.
+        for module_name in list(sys.modules.keys()):
+            if module_name == "poselib" or module_name.startswith("poselib."):
+                del sys.modules[module_name]
+
+        try:
+            from poselib.skeleton.skeleton3d import SkeletonMotion
+
+            if "third_party/poselib" not in str(pathlib.Path(SkeletonMotion.__module__.replace('.', '/')).as_posix()):
+                # Best-effort guard; the module file check below is definitive.
+                pass
+            poselib_module_path = pathlib.Path(sys.modules[SkeletonMotion.__module__].__file__).resolve()
+            if "third_party/poselib" not in str(poselib_module_path):
+                raise RuntimeError(
+                    f"Unexpected PoseLib import path: {poselib_module_path}. "
+                    "Expected repository-bundled PoseLib under third_party/poselib."
+                )
+
+            motion = SkeletonMotion.from_fbx(
+                fbx_file_path=motion_file,
+                root_joint=root_joint,
+                fps=fps,
+            )
+            return _skeleton_motion_to_retarget_frames(motion), motion.fps
+        except Exception as err:
+            _raise_fbx_dependency_error(motion_file, err)
+
+    raise ValueError(
+        f"Unsupported motion file format '{suffix}'. Use a .pkl exported by PoseLib or a raw .fbx file."
+    )
 
 def offset_to_ground(retargeter: GMR, motion_data):
     offset = np.inf
@@ -37,6 +123,20 @@ if __name__ == "__main__":
         help="FBX motion file to load (OptiTrack motion).",
         required=True,
         type=str,
+    )
+
+    parser.add_argument(
+        "--root_joint",
+        type=str,
+        default="Hips",
+        help="Root joint name when --motion_file is a raw .fbx.",
+    )
+
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=None,
+        help="Optional override FPS when --motion_file is a raw .fbx. If omitted, use FBX metadata.",
     )
     
     parser.add_argument(
@@ -66,23 +166,28 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_path",
         default=None,
-        help="Path to save the robot motion.",
+        help="Path to save the robot motion (.pkl or .npz).",
     )
     
     
     args = parser.parse_args()
-    
 
-    if args.save_path is not None:
-        save_dir = os.path.dirname(args.save_path)
-        if save_dir:  # Only create directory if it's not empty
-            os.makedirs(save_dir, exist_ok=True)
-        qpos_list = []
+    if args.save_path is None:
+        input_stem = pathlib.Path(args.motion_file).stem
+        args.save_path = f"{input_stem}.pkl"
+        print(f"No --save_path provided. Saving output to {args.save_path}")
+
+    save_dir = os.path.dirname(args.save_path)
+    if save_dir:  # Only create directory if it's not empty
+        os.makedirs(save_dir, exist_ok=True)
+    qpos_list = []
 
     
     # Load OptiTrack FMB motion trajectory
     print(f"Loading OptiTrack FBX motion file: {args.motion_file}")
-    data_frames = load_optitrack_fbx_motion_file(args.motion_file)
+    data_frames, detected_motion_fps = load_optitrack_fbx_motion_file(
+        args.motion_file, root_joint=args.root_joint, fps=args.fps
+    )
     print(f"Loaded {len(data_frames)} frames")
     
     
@@ -96,7 +201,7 @@ if __name__ == "__main__":
     height_offset = offset_to_ground(retargeter, data_frames)
     retargeter.set_ground_offset(height_offset)
 
-    motion_fps = 120
+    motion_fps = detected_motion_fps if detected_motion_fps is not None else (args.fps or 120)
     
     robot_motion_viewer = RobotMotionViewer(robot_type=args.robot,
                                             motion_fps=motion_fps,
@@ -113,7 +218,7 @@ if __name__ == "__main__":
     fps_start_time = time.time()
     fps_display_interval = 2.0  # Display FPS every 2 seconds
     
-    print(f"mocap_frame_rate: {motion_fps}")
+    print(f"mocap_frame_rate: {motion_fps:.3f}")
     
     # Create tqdm progress bar for the total number of frames
     pbar = tqdm(total=len(data_frames), desc="Retargeting OptiTrack motion")
@@ -153,29 +258,38 @@ if __name__ == "__main__":
 
         i += 1
 
-        if args.save_path is not None:
-            qpos_list.append(qpos)
+        qpos_list.append(qpos)
 
-    if args.save_path is not None:
-        import pickle
-        root_pos = np.array([qpos[:3] for qpos in qpos_list])
-        # save from wxyz to xyzw
-        root_rot = np.array([qpos[3:7][[1,2,3,0]] for qpos in qpos_list])
-        dof_pos = np.array([qpos[7:] for qpos in qpos_list])
-        local_body_pos = None
-        body_names = None
-        
-        motion_data = {
-            "fps": motion_fps,
-            "root_pos": root_pos,
-            "root_rot": root_rot,
-            "dof_pos": dof_pos,
-            "local_body_pos": local_body_pos,
-            "link_body_list": body_names,
-        }
+    import pickle
+    root_pos = np.array([qpos[:3] for qpos in qpos_list])
+    # save from wxyz to xyzw
+    root_rot = np.array([qpos[3:7][[1,2,3,0]] for qpos in qpos_list])
+    dof_pos = np.array([qpos[7:] for qpos in qpos_list])
+    local_body_pos = None
+    body_names = None
+
+    motion_data = {
+        "fps": motion_fps,
+        "root_pos": root_pos,
+        "root_rot": root_rot,
+        "dof_pos": dof_pos,
+        "local_body_pos": local_body_pos,
+        "link_body_list": body_names,
+    }
+
+    save_suffix = pathlib.Path(args.save_path).suffix.lower()
+    if save_suffix == ".npz":
+        np.savez(
+            args.save_path,
+            fps=np.array([motion_fps], dtype=np.float32),
+            root_pos=root_pos,
+            root_rot=root_rot,
+            dof_pos=dof_pos,
+        )
+    else:
         with open(args.save_path, "wb") as f:
             pickle.dump(motion_data, f)
-        print(f"Saved to {args.save_path}")
+    print(f"Saved to {args.save_path}")
 
     # Close progress bar
     pbar.close()
