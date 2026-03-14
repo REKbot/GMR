@@ -8,6 +8,22 @@ from scipy.interpolate import interp1d
 import general_motion_retargeting.utils.lafan_vendor.utils as utils
 
 
+def infer_integer_fps(fps_value, default_fps=30):
+    """Infer an integer FPS from scalar-like metadata (e.g., 119.951 -> 120)."""
+    try:
+        if isinstance(fps_value, torch.Tensor):
+            fps_value = fps_value.detach().cpu().numpy()
+        fps_array = np.asarray(fps_value).reshape(-1)
+        if fps_array.size == 0:
+            return int(default_fps)
+        fps_float = float(fps_array[0])
+        if not np.isfinite(fps_float) or fps_float <= 0:
+            return int(default_fps)
+        return max(1, int(np.round(fps_float)))
+    except Exception:
+        return int(default_fps)
+
+
 
 def _coord_candidates():
     def rot(axis, deg):
@@ -259,8 +275,8 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
         ...
     }
     """
-    src_fps = smplx_data["mocap_frame_rate"].item()
-    frame_skip = int(src_fps / tgt_fps)
+    src_fps = float(np.asarray(smplx_data["mocap_frame_rate"]).reshape(-1)[0])
+    tgt_fps = infer_integer_fps(tgt_fps, default_fps=src_fps)
     num_frames = smplx_data["pose_body"].shape[0]
     global_orient = smplx_output.global_orient.squeeze()
     full_body_pose = smplx_output.full_pose.reshape(num_frames, -1, 3)
@@ -268,9 +284,10 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
     joint_names = JOINT_NAMES[: len(body_model.parents)]
     parents = body_model.parents
 
-    if tgt_fps < src_fps:
-        # perform fps alignment with proper interpolation
-        new_num_frames = num_frames // frame_skip
+    if num_frames > 1 and not np.isclose(tgt_fps, src_fps):
+        # perform fps alignment with proper interpolation for arbitrary source/target FPS
+        duration_s = (num_frames - 1) / src_fps
+        new_num_frames = max(2, int(np.round(duration_s * tgt_fps)) + 1)
 
         # Create time points for interpolation
         original_time = np.arange(num_frames)
@@ -315,9 +332,9 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
                 joints_interp.append(interp_func(target_time))
         joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
 
-        aligned_fps = len(global_orient) / num_frames * src_fps
+        aligned_fps = float(tgt_fps)
     else:
-        aligned_fps = tgt_fps
+        aligned_fps = float(tgt_fps)
 
     smplx_data_frames = []
     for curr_frame in range(len(global_orient)):
@@ -372,8 +389,8 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
         ...
     }
     """
-    src_fps = smplx_data["mocap_frame_rate"].item()
-    frame_skip = int(src_fps / tgt_fps)
+    src_fps = float(np.asarray(smplx_data["mocap_frame_rate"]).reshape(-1)[0])
+    tgt_fps = infer_integer_fps(tgt_fps, default_fps=src_fps)
     num_frames = smplx_data["pose_body"].shape[0]
     global_orient = smplx_output.global_orient.squeeze()
     full_body_pose = smplx_output.full_pose.reshape(num_frames, -1, 3)
@@ -381,9 +398,10 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
     joint_names = JOINT_NAMES[: len(body_model.parents)]
     parents = body_model.parents
 
-    if tgt_fps < src_fps:
-        # perform fps alignment with proper interpolation
-        new_num_frames = num_frames // frame_skip
+    if num_frames > 1 and not np.isclose(tgt_fps, src_fps):
+        # perform fps alignment with proper interpolation for arbitrary source/target FPS
+        duration_s = (num_frames - 1) / src_fps
+        new_num_frames = max(2, int(np.round(duration_s * tgt_fps)) + 1)
 
         # Create time points for interpolation
         original_time = np.arange(num_frames)
@@ -428,9 +446,9 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
                 joints_interp.append(interp_func(target_time))
         joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
 
-        aligned_fps = len(global_orient) / num_frames * src_fps
+        aligned_fps = float(tgt_fps)
     else:
-        aligned_fps = tgt_fps
+        aligned_fps = float(tgt_fps)
 
     smplx_data_frames = []
     for curr_frame in range(len(global_orient)):

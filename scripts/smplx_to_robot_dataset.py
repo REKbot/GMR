@@ -14,7 +14,7 @@ import torch
 import pickle
 
 from general_motion_retargeting import GeneralMotionRetargeting as GMR
-from general_motion_retargeting.utils.smpl import load_smplx_file, get_smplx_data_offline_fast
+from general_motion_retargeting.utils.smpl import load_smplx_file, get_smplx_data_offline_fast, infer_integer_fps
 from general_motion_retargeting.kinematics_model import KinematicsModel
 from general_motion_retargeting import IK_CONFIG_ROOT
 import gc
@@ -68,7 +68,7 @@ def process_file(smplx_file_path, tgt_file_path, tgt_robot, SMPLX_FOLDER, tgt_fo
         return
     
   
-    tgt_fps = 30
+    tgt_fps = infer_integer_fps(mocap_frame_rate)
     try:
         smplx_frame_data_list, aligned_fps = get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=tgt_fps)
     except Exception as e:

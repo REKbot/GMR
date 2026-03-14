@@ -9,7 +9,7 @@ from scipy.spatial.transform import Rotation as R
 from general_motion_retargeting import GeneralMotionRetargeting as GMR
 from general_motion_retargeting import KinematicsModel
 from general_motion_retargeting.params import ROBOT_XML_DICT
-from general_motion_retargeting.utils.smpl import load_smplx_file, get_smplx_data_offline_fast
+from general_motion_retargeting.utils.smpl import load_smplx_file, get_smplx_data_offline_fast, infer_integer_fps
 
 
 ROBOT_CHOICES = [
@@ -77,7 +77,7 @@ def _retarget_smplx_to_qpos(smplx_file, robot, coord_correction):
         smplx_file, smplx_folder, coord_correction=coord_correction
     )
 
-    tgt_fps = 30
+    tgt_fps = infer_integer_fps(smplx_data["mocap_frame_rate"])
     smplx_frames, aligned_fps = get_smplx_data_offline_fast(
         smplx_data, body_model, smplx_output, tgt_fps=tgt_fps
     )

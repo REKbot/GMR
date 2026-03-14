@@ -7,7 +7,7 @@ import numpy as np
 
 from general_motion_retargeting import GeneralMotionRetargeting as GMR
 from general_motion_retargeting import RobotMotionViewer
-from general_motion_retargeting.utils.smpl import load_smplx_file, get_smplx_data_offline_fast
+from general_motion_retargeting.utils.smpl import load_smplx_file, get_smplx_data_offline_fast, infer_integer_fps
 
 from rich import print
 
@@ -90,7 +90,7 @@ if __name__ == "__main__":
     )
     
     # align fps
-    tgt_fps = 30
+    tgt_fps = infer_integer_fps(smplx_data["mocap_frame_rate"])
     smplx_data_frames, aligned_fps = get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=tgt_fps)
     
    
