@@ -23,9 +23,41 @@ def keyboard_callback(keycode):
         should_quit = True
 
 
+def _resample_linear(data, source_idx):
+    """Resample [T, ...] data using linear interpolation at fractional indices."""
+    src_len = data.shape[0]
+    idx0 = np.floor(source_idx).astype(np.int64)
+    idx1 = np.clip(idx0 + 1, 0, src_len - 1)
+    alpha = (source_idx - idx0).astype(np.float64)
+
+    expand_shape = (len(source_idx),) + (1,) * (data.ndim - 1)
+    alpha = alpha.reshape(expand_shape)
+    return (1.0 - alpha) * data[idx0] + alpha * data[idx1]
+
+
+def _resample_quat_xyzw(quat_xyzw, source_idx):
+    """Resample quaternions [T, 4] at fractional indices using normalized lerp."""
+    src_len = quat_xyzw.shape[0]
+    idx0 = np.floor(source_idx).astype(np.int64)
+    idx1 = np.clip(idx0 + 1, 0, src_len - 1)
+    alpha = (source_idx - idx0).astype(np.float64)[:, None]
+
+    q0 = quat_xyzw[idx0]
+    q1 = quat_xyzw[idx1]
+
+    # Keep shortest-path interpolation by matching hemisphere.
+    dot = np.sum(q0 * q1, axis=1, keepdims=True)
+    q1 = np.where(dot < 0.0, -q1, q1)
+
+    q = (1.0 - alpha) * q0 + alpha * q1
+    norm = np.linalg.norm(q, axis=1, keepdims=True)
+    norm = np.clip(norm, 1e-8, None)
+    return q / norm
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Speed up or slow down a retargeted robot-motion NPZ by changing its playback FPS."
+        description="Speed up or slow down a retargeted robot-motion NPZ while preserving the source FPS."
     )
     parser.add_argument(
         "--robot_motion_npz",
@@ -95,30 +127,43 @@ def main():
         raise KeyError(f"Missing required keys in npz: {missing_keys}")
 
     original_fps = float(motion_data["fps"])
-    new_fps = original_fps * args.factor
-    motion_data["fps"] = np.array(new_fps)
+    root_pos = motion_data["root_pos"]
+    root_rot = motion_data["root_rot"]
+    dof_pos = motion_data["dof_pos"]
+
+    src_len = len(root_pos)
+    if src_len < 2:
+        raise ValueError("Motion must contain at least 2 frames to retime.")
+
+    # Preserve source FPS; change speed by resampling frame count/trajectory timing.
+    dst_len = max(2, int(round(src_len / args.factor)))
+    source_idx = np.linspace(0.0, src_len - 1, dst_len)
+
+    motion_data["root_pos"] = _resample_linear(root_pos, source_idx)
+    motion_data["root_rot"] = _resample_quat_xyzw(root_rot, source_idx)
+    motion_data["dof_pos"] = _resample_linear(dof_pos, source_idx)
+    motion_data["fps"] = np.array(original_fps)
 
     speed_suffix = "faster" if args.factor > 1.0 else "slower"
     output_path = input_path.with_name(f"{input_path.stem}_{args.factor:g}_{speed_suffix}.npz")
     np.savez(output_path, **motion_data)
 
+    old_duration_s = src_len / original_fps
+    new_duration_s = dst_len / original_fps
     print(f"Saved retimed motion to: {output_path}")
-    print(f"Original FPS: {original_fps:g}")
-    print(f"New FPS: {new_fps:g}")
+    print(f"FPS kept at source value: {original_fps:g}")
+    print(f"Frames: {src_len} -> {dst_len}")
+    print(f"Duration (s): {old_duration_s:.3f} -> {new_duration_s:.3f}")
 
     if args.no_preview:
         return
 
-    root_pos = motion_data["root_pos"]
-    root_rot = motion_data["root_rot"]
-    dof_pos = motion_data["dof_pos"]
-
     # Stored motion uses root quaternion in xyzw order; viewer expects wxyz.
-    root_rot_wxyz = root_rot[:, [3, 0, 1, 2]]
+    root_rot_wxyz = motion_data["root_rot"][:, [3, 0, 1, 2]]
 
     viewer = RobotMotionViewer(
         robot_type=args.robot,
-        motion_fps=new_fps,
+        motion_fps=original_fps,
         transparent_robot=0,
         record_video=args.record_video,
         video_path=args.video_path,
@@ -140,15 +185,15 @@ def main():
             fps_start_time = current_time
 
         viewer.step(
-            root_pos=root_pos[frame_idx],
+            root_pos=motion_data["root_pos"][frame_idx],
             root_rot=root_rot_wxyz[frame_idx],
-            dof_pos=dof_pos[frame_idx],
+            dof_pos=motion_data["dof_pos"][frame_idx],
             rate_limit=True,
             follow_camera=False,
         )
 
         frame_idx += 1
-        if frame_idx >= len(root_pos):
+        if frame_idx >= len(motion_data["root_pos"]):
             if args.loop:
                 frame_idx = 0
             else:
