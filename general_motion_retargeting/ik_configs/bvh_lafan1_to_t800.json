@@ -1,0 +1,476 @@
+{
+    "robot_root_name": "LINK_BASE",
+    "human_root_name": "Hips",
+    "ground_height": 0.0,
+    "human_height_assumption": 1.75,
+    "use_ik_match_table1": true,
+    "use_ik_match_table2": false,
+    "human_scale_table": {
+        "Hips": 1.0,
+        "LeftArm": 1.0,
+        "LeftFootMod": 1.0,
+        "LeftForeArm": 1.0,
+        "LeftHand": 1.0,
+        "LeftLeg": 1.0,
+        "LeftUpLeg": 1.0,
+        "RightArm": 1.0,
+        "RightFootMod": 1.0,
+        "RightForeArm": 1.0,
+        "RightHand": 1.0,
+        "RightLeg": 1.0,
+        "RightUpLeg": 1.0,
+        "Spine2": 1.0
+    },
+    "ik_match_table1": {
+        "LINK_BASE": [
+            "Hips",
+            50,
+            40.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_HIP_ROLL_L": [
+            "LeftUpLeg",
+            5,
+            35.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_KNEE_PITCH_L": [
+            "LeftLeg",
+            30,
+            30.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_ANKLE_ROLL_L": [
+            "LeftFootMod",
+            90,
+            25.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_HIP_ROLL_R": [
+            "RightUpLeg",
+            5,
+            35.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_KNEE_PITCH_R": [
+            "RightLeg",
+            30,
+            30.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_ANKLE_ROLL_R": [
+            "RightFootMod",
+            90,
+            25.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_WAIST_YAW": [
+            "Spine2",
+            30,
+            35.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_SHOULDER_ROLL_L": [
+            "LeftArm",
+            5,
+            0.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_ELBOW_PITCH_L": [
+            "LeftForeArm",
+            30,
+            0.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_WRIST_END_L": [
+            "LeftHand",
+            70,
+            0.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_SHOULDER_ROLL_R": [
+            "RightArm",
+            5,
+            0.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_ELBOW_PITCH_R": [
+            "RightForeArm",
+            30,
+            0.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_WRIST_END_R": [
+            "RightHand",
+            70,
+            0.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ]
+    },
+    "ik_match_table2": {
+        "LINK_BASE": [
+            "Hips",
+            50,
+            40.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_HIP_ROLL_L": [
+            "LeftUpLeg",
+            5,
+            35.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_KNEE_PITCH_L": [
+            "LeftLeg",
+            30,
+            30.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_ANKLE_ROLL_L": [
+            "LeftFootMod",
+            90,
+            25.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_HIP_ROLL_R": [
+            "RightUpLeg",
+            5,
+            35.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_KNEE_PITCH_R": [
+            "RightLeg",
+            30,
+            30.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_ANKLE_ROLL_R": [
+            "RightFootMod",
+            90,
+            25.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_WAIST_YAW": [
+            "Spine2",
+            30,
+            35.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_SHOULDER_ROLL_L": [
+            "LeftArm",
+            5,
+            0.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_ELBOW_PITCH_L": [
+            "LeftForeArm",
+            30,
+            0.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_WRIST_END_L": [
+            "LeftHand",
+            70,
+            0.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_SHOULDER_ROLL_R": [
+            "RightArm",
+            5,
+            0.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_ELBOW_PITCH_R": [
+            "RightForeArm",
+            30,
+            0.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "LINK_WRIST_END_R": [
+            "RightHand",
+            70,
+            0.0,
+            [
+                0.0,
+                0.0,
+                0.0
+            ],
+            [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        ]
+    }
+}

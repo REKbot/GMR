@@ -14,6 +14,7 @@ ROBOT_XML_DICT = {
     "stanford_toddy": ASSET_ROOT / "stanford_toddy" / "toddy_mocap.xml",
     "fourier_n1": ASSET_ROOT / "fourier_n1" / "n1_mocap.xml",
     "engineai_pm01": ASSET_ROOT / "engineai_pm01" / "pm_v2.xml",
+    "t800": ASSET_ROOT / "t800" / "t800_mocap.xml",
     "kuavo_s45": ASSET_ROOT / "kuavo_s45" / "biped_s45_collision.xml",
     "hightorque_hi": ASSET_ROOT / "hightorque_hi" / "hi_25dof.xml",
     "galaxea_r1pro": ASSET_ROOT / "galaxea_r1pro" / "r1_pro.xml",
@@ -37,6 +38,7 @@ IK_CONFIG_DICT = {
         "stanford_toddy": IK_CONFIG_ROOT / "smplx_to_toddy.json",
         "fourier_n1": IK_CONFIG_ROOT / "smplx_to_n1.json",
         "engineai_pm01": IK_CONFIG_ROOT / "smplx_to_pm01.json",
+        "t800": IK_CONFIG_ROOT / "smplx_to_t800.json",
         "kuavo_s45": IK_CONFIG_ROOT / "smplx_to_kuavo.json",
         "hightorque_hi": IK_CONFIG_ROOT / "smplx_to_hi.json",
         "galaxea_r1pro": IK_CONFIG_ROOT / "smplx_to_r1pro.json",
@@ -53,10 +55,15 @@ IK_CONFIG_DICT = {
         "fourier_n1": IK_CONFIG_ROOT / "bvh_lafan1_to_n1.json",
         "stanford_toddy": IK_CONFIG_ROOT / "bvh_lafan1_to_toddy.json",
         "engineai_pm01": IK_CONFIG_ROOT / "bvh_lafan1_to_pm01.json",
+        "t800": IK_CONFIG_ROOT / "bvh_lafan1_to_t800.json",
         "pal_talos": IK_CONFIG_ROOT / "bvh_to_talos.json",
     },
     "bvh_nokov":{
         "unitree_g1": IK_CONFIG_ROOT / "bvh_nokov_to_g1.json",
+        # T800 boxing BVH uses LAFAN1 skeleton but names toes "LeftToeBase"
+        # (not "LeftToe"), so it loads via the nokov foot-mod branch. Same human
+        # body names as bvh_lafan1, so the lafan1 config is reused here.
+        "t800": IK_CONFIG_ROOT / "bvh_lafan1_to_t800.json",
     },
     "bvh_xsens":{
         "unitree_g1": IK_CONFIG_ROOT / "bvh_xsens_to_g1.json",
@@ -86,6 +93,7 @@ ROBOT_BASE_DICT = {
     "stanford_toddy": "waist_link",
     "fourier_n1": "base_link",
     "engineai_pm01": "LINK_BASE",
+    "t800": "LINK_BASE",
     "kuavo_s45": "base_link",
     "hightorque_hi": "base_link",
     "galaxea_r1pro": "torso_link4",
@@ -107,6 +115,7 @@ VIEWER_CAM_DISTANCE_DICT = {
     "stanford_toddy": 1.0,
     "fourier_n1": 2.0,
     "engineai_pm01": 2.0,
+    "t800": 2.0,
     "kuavo_s45": 3.0,
     "hightorque_hi": 2.0,
     "galaxea_r1pro": 3.0,

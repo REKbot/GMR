@@ -61,6 +61,7 @@ def read_bvh(filename, start=None, end=None, order=None):
     orients = np.array([]).reshape((0, 4))
     offsets = np.array([]).reshape((0, 3))
     parents = np.array([], dtype=int)
+    orders = []  # per-joint euler rotation order (BVH may mix orders per joint)
 
     # Parse the  file, line by line
     for line in f:
@@ -95,13 +96,15 @@ def read_bvh(filename, start=None, end=None, order=None):
         chanmatch = re.match(r"\s*CHANNELS\s+(\d+)", line)
         if chanmatch:
             channels = int(chanmatch.group(1))
+            channelis = 0 if channels == 3 else 3
+            channelie = 3 if channels == 3 else 6
+            parts = line.split()[2 + channelis:2 + channelie]
+            if any([p not in channelmap for p in parts]):
+                continue
+            this_order = "".join([channelmap[p] for p in parts])
+            orders.append(this_order)  # one per joint, in declaration order
             if order is None:
-                channelis = 0 if channels == 3 else 3
-                channelie = 3 if channels == 3 else 6
-                parts = line.split()[2 + channelis:2 + channelie]
-                if any([p not in channelmap for p in parts]):
-                    continue
-                order = "".join([channelmap[p] for p in parts])
+                order = this_order
             continue
 
         jmatch = re.match("\s*JOINT\s+(\w+)", line)
@@ -160,8 +163,17 @@ def read_bvh(filename, start=None, end=None, order=None):
 
     f.close()
 
-    rotations = utils.euler_to_quat(np.radians(rotations), order=order)
-    rotations = utils.remove_quat_discontinuities(rotations)
+    # Per-joint Euler order: this BVH (and others) declare different channel
+    # orders per joint (ZYX for the spine, XYZ/YZX for the legs). Applying one
+    # global order scrambles the non-matching joints -> straight/stiff legs.
+    rad = np.radians(rotations)
+    if len(orders) == rotations.shape[1]:
+        quats = np.zeros(rotations.shape[:-1] + (4,), dtype=np.float32)
+        for j, oj in enumerate(orders):
+            quats[:, j, :] = utils.euler_to_quat(rad[:, j, :], order=oj)
+    else:
+        quats = utils.euler_to_quat(rad, order=order)
+    rotations = utils.remove_quat_discontinuities(quats)
 
     return Anim(rotations, positions, offsets, parents, names)
 
